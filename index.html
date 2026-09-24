@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{
   --bg:#EDE6D6; --ink:#1F1B16; --muted:#6B6254; --card:#F8F4EA; --line:#D6CCB6;
@@ -24,10 +26,13 @@ body{background:var(--bg);color:var(--ink);font-family:"Onest",system-ui,-apple-
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 
-/* ---------- setup ---------- */
 #setup{max-width:520px;margin:0 auto;padding:28px 20px 40px}
 h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem;line-height:1.05;margin:0 0 6px;letter-spacing:-.02em}
-.sub{color:var(--muted);margin:0 0 24px;line-height:1.45}
+.sub{color:var(--muted);margin:0 0 8px;line-height:1.45}
+.status{font-size:.9rem;color:var(--muted);margin:0 0 20px;display:flex;align-items:center;gap:8px}
+.status i{width:8px;height:8px;border-radius:50%;background:#B9AE98;display:inline-block}
+.status.ok i{background:#2E8B4A}
+.status.err{color:var(--p1)} .status.err i{background:var(--p1)}
 .list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 6px 6px 10px}
 .pawn{width:22px;height:28px;flex:none;position:relative}
@@ -40,16 +45,17 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 .ico:disabled{opacity:.25;cursor:default;background:transparent}
 .add{width:100%;border:2px dashed var(--line);background:transparent;border-radius:14px;padding:14px;color:var(--muted);font-weight:500}
 .add:hover{border-color:var(--muted);color:var(--ink)}
+.add:disabled{opacity:.4;cursor:default}
 .start{margin-top:24px;width:100%;border:0;border-radius:16px;padding:18px;background:var(--ink);color:var(--bg);font-family:"Unbounded",system-ui,sans-serif;font-weight:600;font-size:1.1rem}
 .start:disabled{opacity:.35;cursor:default}
 .hint{color:var(--muted);font-size:.9rem;margin-top:12px;text-align:center}
 
-/* ---------- game ---------- */
 #game{display:none;position:fixed;inset:0;flex-direction:column;background:var(--cur);color:#fff;transition:background .35s ease;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 #game.on{display:flex}
 .bar{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;gap:8px}
 .chip{border:0;background:rgba(0,0,0,.22);color:#fff;border-radius:999px;padding:10px 16px;font-weight:600;font-size:.95rem}
 .chip:hover{background:rgba(0,0,0,.35)}
+.chip:disabled{opacity:.4;cursor:default}
 .round{font-weight:500;opacity:.9}
 .tap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;border:0;background:transparent;color:#fff;width:100%}
 .now{font-size:1rem;opacity:.85;margin-bottom:10px}
@@ -59,7 +65,7 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 .tapnote{margin-top:22px;opacity:.75;font-size:.95rem}
 .queue{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:0 14px 18px}
 .q{background:rgba(0,0,0,.22);border-radius:999px;padding:7px 12px;font-size:.9rem;display:flex;align-items:center;gap:7px;opacity:.7}
-.q.cur{background:#fff;color:var(--ink);opacity:1;font-weight:600}
+.q.cur{background:#fff;color:#1F1B16;opacity:1;font-weight:600}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px rgba(255,255,255,.7)}
 @media (prefers-reduced-motion: reduce){#game{transition:none}.name.pop{animation:none}}
 </style>
@@ -68,7 +74,8 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 
 <section id="setup">
   <h1>Чей ход</h1>
-  <p class="sub">Впиши игроков по порядку хода. Первый в списке ходит первым.</p>
+  <p class="sub">Впиши игроков по порядку хода. Всё, что меняет один, сразу видят остальные.</p>
+  <p class="status" id="status"><i></i><span>Подключаюсь…</span></p>
   <div class="list" id="list"></div>
   <button class="add" id="add">+ Добавить игрока</button>
   <button class="start" id="start">Начать игру</button>
@@ -90,57 +97,118 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 </section>
 
 <script>
+/* ======= ВСТАВЬ СЮДА СВОЙ КОНФИГ ИЗ FIREBASE ======= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBIMno_vXMELK9r-QUZKZHsMEZcKJ1C9fg",
+  authDomain: "trackmoves-4c830.firebaseapp.com",
+  databaseURL: "https://trackmoves-4c830-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "trackmoves-4c830",
+  appId: "1:169710981460:web:d277c2e2e44e8a02d2f8c1"
+};
+/* =================================================== */
+
 const COLORS=["--p1","--p2","--p3","--p4","--p5","--p6","--p7","--p8"];
-let players=["",""], turn=0, round=1;
+const room=((new URLSearchParams(location.search).get("room"))||"main").replace(/[.#$\[\]\/]/g,"").slice(0,40)||"main";
+let state={players:["",""],turn:0,round:1,started:false};
+let ref=null, lastTurnKey="";
 
-try{
-  const s=JSON.parse(localStorage.getItem("cheyhod")||"null");
-  if(s&&Array.isArray(s.players)&&s.players.length){players=s.players;turn=s.turn||0;round=s.round||1;}
-}catch(e){}
-function save(){try{localStorage.setItem("cheyhod",JSON.stringify({players,turn,round}))}catch(e){}}
-
-const list=document.getElementById("list");
+const $=id=>document.getElementById(id);
+const list=$("list"), game=$("game"), nameEl=$("name"), statusEl=$("status");
 function color(i){return `var(${COLORS[i%COLORS.length]})`}
-function names(){return players.map((p,i)=>p.trim()||`Игрок ${i+1}`)}
+function names(){return state.players.map((p,i)=>p.trim()||`Игрок ${i+1}`)}
+function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function setStatus(kind,text){statusEl.className="status "+kind;statusEl.querySelector("span").textContent=text}
 
+/* ---- база: храним имена как объект, чтобы пустые строки не терялись ---- */
+function toDb(s){const n={};s.players.forEach((p,i)=>n[i]=p);return {count:s.players.length,names:n,turn:s.turn,round:s.round,started:s.started}}
+function fromDb(v){
+  const count=Math.max(2,Math.min(8,v.count||2)), n=v.names||{};
+  return {players:Array.from({length:count},(_,i)=>typeof n[i]==="string"?n[i]:""),turn:v.turn||0,round:v.round||1,started:!!v.started};
+}
+function save(){if(ref)ref.set(toDb(state))}
+function update(fn){ // атомарно, чтобы два одновременных тапа не сломали очередь
+  if(!ref)return;
+  ref.transaction(cur=>{const s=cur?fromDb(cur):state;fn(s);return toDb(s)});
+}
+
+/* ---- экран настройки ---- */
 function renderSetup(){
-  list.innerHTML="";
-  players.forEach((p,i)=>{
-    const r=document.createElement("div");r.className="row";
-    r.innerHTML=`<span class="pawn" style="--c:${color(i)}"></span>
-      <input maxlength="20" placeholder="Игрок ${i+1}" aria-label="Имя игрока ${i+1}">
-      <button class="ico" data-a="up" aria-label="Выше" ${i===0?"disabled":""}>↑</button>
-      <button class="ico" data-a="del" aria-label="Удалить" ${players.length<=2?"disabled":""}>✕</button>`;
-    const inp=r.querySelector("input");inp.value=p;
-    inp.addEventListener("input",()=>{players[i]=inp.value;save()});
-    inp.addEventListener("keydown",e=>{if(e.key==="Enter"){const n=list.querySelectorAll("input")[i+1];n?n.focus():addPlayer()}});
-    r.querySelector('[data-a="up"]').onclick=()=>{[players[i-1],players[i]]=[players[i],players[i-1]];save();renderSetup()};
-    r.querySelector('[data-a="del"]').onclick=()=>{players.splice(i,1);save();renderSetup()};
-    list.appendChild(r);
+  const inputs=list.querySelectorAll("input");
+  if(inputs.length!==state.players.length){
+    list.innerHTML="";
+    state.players.forEach((p,i)=>{
+      const r=document.createElement("div");r.className="row";
+      r.innerHTML=`<span class="pawn" style="--c:${color(i)}"></span>
+        <input maxlength="20" placeholder="Игрок ${i+1}" aria-label="Имя игрока ${i+1}">
+        <button class="ico" data-a="up" aria-label="Выше">↑</button>
+        <button class="ico" data-a="del" aria-label="Удалить">✕</button>`;
+      const inp=r.querySelector("input");
+      inp.addEventListener("input",()=>{state.players[i]=inp.value;save()});
+      inp.addEventListener("keydown",e=>{if(e.key==="Enter"){const nx=list.querySelectorAll("input")[i+1];nx?nx.focus():addPlayer()}});
+      r.querySelector('[data-a="up"]').onclick=()=>update(s=>{if(i>0)[s.players[i-1],s.players[i]]=[s.players[i],s.players[i-1]]});
+      r.querySelector('[data-a="del"]').onclick=()=>update(s=>{if(s.players.length>2)s.players.splice(i,1)});
+      list.appendChild(r);
+    });
+  }
+  list.querySelectorAll(".row").forEach((r,i)=>{
+    const inp=r.querySelector("input");
+    if(document.activeElement!==inp&&inp.value!==state.players[i])inp.value=state.players[i];
+    r.querySelector('[data-a="up"]').disabled=i===0;
+    r.querySelector('[data-a="del"]').disabled=state.players.length<=2;
   });
-  document.getElementById("add").disabled=players.length>=8;
+  $("add").disabled=state.players.length>=8;
 }
-function addPlayer(){if(players.length>=8)return;players.push("");save();renderSetup();const ins=list.querySelectorAll("input");ins[ins.length-1].focus()}
-document.getElementById("add").onclick=addPlayer;
+function addPlayer(){
+  update(s=>{if(s.players.length<8)s.players.push("")});
+}
+$("add").onclick=addPlayer;
 
-const game=document.getElementById("game"),nameEl=document.getElementById("name");
+/* ---- экран игры ---- */
 function renderGame(){
-  const n=names();turn=((turn%n.length)+n.length)%n.length;
-  game.style.setProperty("--cur",color(turn));
-  nameEl.textContent=n[turn];
-  nameEl.classList.remove("pop");void nameEl.offsetWidth;nameEl.classList.add("pop");
-  document.getElementById("round").textContent=`Круг ${round}`;
-  document.getElementById("queue").innerHTML=n.map((x,i)=>`<span class="q${i===turn?" cur":""}"><span class="dot" style="--c:${color(i)}"></span>${x.replace(/[<>&]/g,"")}</span>`).join("");
-  document.getElementById("back").disabled=(round===1&&turn===0);
-  save();
+  const n=names(), t=((state.turn%n.length)+n.length)%n.length;
+  game.style.setProperty("--cur",color(t));
+  nameEl.textContent=n[t];
+  const key=state.round+":"+t;
+  if(key!==lastTurnKey){nameEl.classList.remove("pop");void nameEl.offsetWidth;nameEl.classList.add("pop");lastTurnKey=key}
+  $("round").textContent=`Круг ${state.round}`;
+  $("queue").innerHTML=n.map((x,i)=>`<span class="q${i===t?" cur":""}"><span class="dot" style="--c:${color(i)}"></span>${esc(x)}</span>`).join("");
+  $("back").disabled=(state.round===1&&t===0);
 }
-document.getElementById("start").onclick=()=>{turn=0;round=1;document.getElementById("setup").style.display="none";game.classList.add("on");renderGame()};
-document.getElementById("tap").onclick=()=>{turn++;if(turn>=players.length){turn=0;round++}renderGame()};
-document.getElementById("back").onclick=()=>{if(round===1&&turn===0)return;turn--;if(turn<0){turn=players.length-1;round--}renderGame()};
-document.getElementById("edit").onclick=()=>{game.classList.remove("on");document.getElementById("setup").style.display="";renderSetup()};
-document.addEventListener("keydown",e=>{if(!game.classList.contains("on"))return;if(e.key===" "||e.key==="ArrowRight"){e.preventDefault();document.getElementById("tap").click()}if(e.key==="ArrowLeft")document.getElementById("back").click()});
 
+function render(){
+  if(state.started){$("setup").style.display="none";game.classList.add("on");renderGame()}
+  else{game.classList.remove("on");$("setup").style.display="";renderSetup()}
+}
+
+$("start").onclick=()=>update(s=>{s.turn=0;s.round=1;s.started=true});
+$("edit").onclick=()=>update(s=>{s.started=false});
+$("tap").onclick=()=>update(s=>{s.turn++;if(s.turn>=s.players.length){s.turn=0;s.round++}});
+$("back").onclick=()=>update(s=>{if(s.round===1&&s.turn===0)return;s.turn--;if(s.turn<0){s.turn=s.players.length-1;s.round--}});
+document.addEventListener("keydown",e=>{
+  if(!game.classList.contains("on"))return;
+  if(e.key===" "||e.key==="ArrowRight"){e.preventDefault();$("tap").click()}
+  if(e.key==="ArrowLeft")$("back").click();
+});
+
+/* ---- подключение ---- */
 renderSetup();
+if(firebaseConfig.databaseURL.includes("ВСТАВЬ")){
+  setStatus("err","Не вставлен конфиг Firebase — синхронизации нет");
+  $("start").disabled=true;
+}else{
+  try{
+    firebase.initializeApp(firebaseConfig);
+    ref=firebase.database().ref("rooms/"+room);
+    firebase.database().ref(".info/connected").on("value",s=>{
+      s.val()?setStatus("ok",`Онлайн · комната «${room}»`):setStatus("","Нет связи, переподключаюсь…");
+    });
+    ref.on("value",snap=>{
+      const v=snap.val();
+      if(!v){ref.set(toDb(state));return}
+      state=fromDb(v);render();
+    },err=>setStatus("err","База не пускает: проверь правила (Rules) в Firebase"));
+  }catch(e){setStatus("err","Ошибка в конфиге Firebase")}
+}
 </script>
 </body>
 </html>
