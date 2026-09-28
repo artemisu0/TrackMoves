@@ -33,8 +33,9 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 .status i{width:8px;height:8px;border-radius:50%;background:#B9AE98;display:inline-block}
 .status.ok i{background:#2E8B4A}
 .status.err{color:var(--p1)} .status.err i{background:var(--p1)}
-.list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 6px 6px 10px}
+.list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;position:relative}
+.row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 6px 6px 8px;position:relative}
+.num{width:22px;text-align:center;font-family:"Unbounded",system-ui,sans-serif;font-weight:600;font-size:.85rem;color:var(--muted);flex:none}
 .pawn{width:22px;height:28px;flex:none;position:relative}
 .pawn::before{content:"";position:absolute;left:5px;top:0;width:12px;height:12px;border-radius:50%;background:var(--c)}
 .pawn::after{content:"";position:absolute;left:1px;bottom:0;width:20px;height:16px;border-radius:10px 10px 4px 4px;background:var(--c)}
@@ -43,10 +44,21 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 .ico{border:0;background:transparent;width:38px;height:38px;border-radius:10px;font-size:1.1rem;color:var(--muted)}
 .ico:hover{background:var(--line);color:var(--ink)}
 .ico:disabled{opacity:.25;cursor:default;background:transparent}
+.list.busy .row{pointer-events:none}
+.row.first{border-color:var(--c);box-shadow:0 0 0 2px var(--c)}
+.row.first::after{content:"ходит первым";position:absolute;right:92px;top:50%;transform:translateY(-50%);font-size:.75rem;font-weight:600;color:var(--c);white-space:nowrap}
+.row.land{animation:land .5s ease}
+@keyframes land{0%{transform:scale(1.04)}100%{transform:scale(1)}}
 .add{width:100%;border:2px dashed var(--line);background:transparent;border-radius:14px;padding:14px;color:var(--muted);font-weight:500}
 .add:hover{border-color:var(--muted);color:var(--ink)}
 .add:disabled{opacity:.4;cursor:default}
-.start{margin-top:24px;width:100%;border:0;border-radius:16px;padding:18px;background:var(--ink);color:var(--bg);font-family:"Unbounded",system-ui,sans-serif;font-weight:600;font-size:1.1rem}
+.shuffle{margin-top:12px;width:100%;border:2px solid var(--ink);background:transparent;border-radius:16px;padding:15px;font-weight:600;font-size:1rem;display:flex;align-items:center;justify-content:center;gap:10px}
+.shuffle:hover{background:var(--card)}
+.shuffle:disabled{opacity:.35;cursor:default}
+.shuffle .die{display:inline-block;font-size:1.3rem;line-height:1}
+.shuffle.rolling .die{animation:roll .6s linear infinite}
+@keyframes roll{to{transform:rotate(360deg)}}
+.start{margin-top:12px;width:100%;border:0;border-radius:16px;padding:18px;background:var(--ink);color:var(--bg);font-family:"Unbounded",system-ui,sans-serif;font-weight:600;font-size:1.1rem}
 .start:disabled{opacity:.35;cursor:default}
 .hint{color:var(--muted);font-size:.9rem;margin-top:12px;text-align:center}
 
@@ -67,7 +79,8 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 .q{background:rgba(0,0,0,.22);border-radius:999px;padding:7px 12px;font-size:.9rem;display:flex;align-items:center;gap:7px;opacity:.7}
 .q.cur{background:#fff;color:#1F1B16;opacity:1;font-weight:600}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px rgba(255,255,255,.7)}
-@media (prefers-reduced-motion: reduce){#game{transition:none}.name.pop{animation:none}}
+@media (max-width:420px){.row.first::after{display:none}}
+@media (prefers-reduced-motion: reduce){#game{transition:none}.name.pop,.row.land,.shuffle.rolling .die{animation:none}}
 </style>
 </head>
 <body>
@@ -78,6 +91,7 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
   <p class="status" id="status"><i></i><span>Подключаюсь…</span></p>
   <div class="list" id="list"></div>
   <button class="add" id="add">+ Добавить игрока</button>
+  <button class="shuffle" id="shuffle"><span class="die">🎲</span><span>Определить порядок</span></button>
   <button class="start" id="start">Начать игру</button>
   <p class="hint">Во время игры тапай в любом месте экрана, чтобы передать ход.</p>
 </section>
@@ -97,7 +111,7 @@ h1{font-family:"Unbounded",system-ui,sans-serif;font-weight:800;font-size:2.2rem
 </section>
 
 <script>
-/* ======= ВСТАВЬ СЮДА СВОЙ КОНФИГ ИЗ FIREBASE ======= */
+/* ======= КОНФИГ FIREBASE ======= */
 const firebaseConfig = {
   apiKey: "AIzaSyBIMno_vXMELK9r-QUZKZHsMEZcKJ1C9fg",
   authDomain: "trackmoves-4c830.firebaseapp.com",
@@ -105,79 +119,126 @@ const firebaseConfig = {
   projectId: "trackmoves-4c830",
   appId: "1:169710981460:web:d277c2e2e44e8a02d2f8c1"
 };
-/* =================================================== */
+/* =============================== */
 
 const COLORS=["--p1","--p2","--p3","--p4","--p5","--p6","--p7","--p8"];
 const room=((new URLSearchParams(location.search).get("room"))||"main").replace(/[.#$\[\]\/]/g,"").slice(0,40)||"main";
-let state={players:["",""],turn:0,round:1,started:false};
-let ref=null, lastTurnKey="";
+// игрок = {n: имя, c: номер цвета}; цвет закреплён за игроком
+let state={players:[{n:"",c:0},{n:"",c:1}],turn:0,round:1,started:false,shuf:0};
+let ref=null, lastTurnKey="", loaded=false, animating=false;
 
 const $=id=>document.getElementById(id);
 const list=$("list"), game=$("game"), nameEl=$("name"), statusEl=$("status");
-function color(i){return `var(${COLORS[i%COLORS.length]})`}
-function names(){return state.players.map((p,i)=>p.trim()||`Игрок ${i+1}`)}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function color(c){return `var(${COLORS[c%COLORS.length]})`}
+function label(p,i){return p.n.trim()||`Игрок ${i+1}`}
 function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function setStatus(kind,text){statusEl.className="status "+kind;statusEl.querySelector("span").textContent=text}
+function shuffled(arr){const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 
-/* ---- база: храним имена как объект, чтобы пустые строки не терялись ---- */
-function toDb(s){const n={};s.players.forEach((p,i)=>n[i]=p);return {count:s.players.length,names:n,turn:s.turn,round:s.round,started:s.started}}
+/* ---- база ---- */
+function toDb(s){
+  const n={},c={};s.players.forEach((p,i)=>{n[i]=p.n;c[i]=p.c});
+  return {count:s.players.length,names:n,colors:c,turn:s.turn,round:s.round,started:s.started,shuf:s.shuf||0};
+}
 function fromDb(v){
-  const count=Math.max(2,Math.min(8,v.count||2)), n=v.names||{};
-  return {players:Array.from({length:count},(_,i)=>typeof n[i]==="string"?n[i]:""),turn:v.turn||0,round:v.round||1,started:!!v.started};
+  const count=Math.max(2,Math.min(8,v.count||2)), n=v.names||{}, c=v.colors||{};
+  return {players:Array.from({length:count},(_,i)=>({n:typeof n[i]==="string"?n[i]:"",c:typeof c[i]==="number"?c[i]:i})),
+          turn:v.turn||0,round:v.round||1,started:!!v.started,shuf:v.shuf||0};
 }
 function save(){if(ref)ref.set(toDb(state))}
-function update(fn){ // атомарно, чтобы два одновременных тапа не сломали очередь
+function update(fn){
   if(!ref)return;
   ref.transaction(cur=>{const s=cur?fromDb(cur):state;fn(s);return toDb(s)});
 }
 
-/* ---- экран настройки ---- */
-function renderSetup(){
-  const inputs=list.querySelectorAll("input");
-  if(inputs.length!==state.players.length){
+/* ---- список игроков с анимацией перестановки (FLIP) ---- */
+function renderSetup(players=state.players,dur=0,markFirst=false){
+  const sig=players.map(p=>p.c).join(",");
+  if(list.dataset.sig!==sig){
+    const before={};
+    list.querySelectorAll(".row").forEach(r=>before[r.dataset.c]=r.getBoundingClientRect().top);
     list.innerHTML="";
-    state.players.forEach((p,i)=>{
-      const r=document.createElement("div");r.className="row";
-      r.innerHTML=`<span class="pawn" style="--c:${color(i)}"></span>
+    players.forEach((p,i)=>{
+      const r=document.createElement("div");r.className="row";r.dataset.c=p.c;r.style.setProperty("--c",color(p.c));
+      r.innerHTML=`<span class="num">${i+1}</span><span class="pawn"></span>
         <input maxlength="20" placeholder="Игрок ${i+1}" aria-label="Имя игрока ${i+1}">
         <button class="ico" data-a="up" aria-label="Выше">↑</button>
         <button class="ico" data-a="del" aria-label="Удалить">✕</button>`;
-      const inp=r.querySelector("input");
-      inp.addEventListener("input",()=>{state.players[i]=inp.value;save()});
+      const inp=r.querySelector("input");inp.value=p.n;
+      inp.addEventListener("input",()=>{if(state.players[i]){state.players[i].n=inp.value;save()}});
       inp.addEventListener("keydown",e=>{if(e.key==="Enter"){const nx=list.querySelectorAll("input")[i+1];nx?nx.focus():addPlayer()}});
       r.querySelector('[data-a="up"]').onclick=()=>update(s=>{if(i>0)[s.players[i-1],s.players[i]]=[s.players[i],s.players[i-1]]});
       r.querySelector('[data-a="del"]').onclick=()=>update(s=>{if(s.players.length>2)s.players.splice(i,1)});
       list.appendChild(r);
     });
+    list.dataset.sig=sig;
+    if(dur>0){
+      list.querySelectorAll(".row").forEach(r=>{
+        const f=before[r.dataset.c];if(f==null)return;
+        const d=f-r.getBoundingClientRect().top;if(!d)return;
+        r.animate([{transform:`translateY(${d}px)`},{transform:"none"}],{duration:dur,easing:"cubic-bezier(.25,.9,.3,1)"});
+      });
+    }
   }
   list.querySelectorAll(".row").forEach((r,i)=>{
     const inp=r.querySelector("input");
-    if(document.activeElement!==inp&&inp.value!==state.players[i])inp.value=state.players[i];
+    if(document.activeElement!==inp&&inp.value!==players[i].n)inp.value=players[i].n;
     r.querySelector('[data-a="up"]').disabled=i===0;
-    r.querySelector('[data-a="del"]').disabled=state.players.length<=2;
+    r.querySelector('[data-a="del"]').disabled=players.length<=2;
+    r.classList.toggle("first",markFirst&&i===0);
   });
-  $("add").disabled=state.players.length>=8;
+  $("add").disabled=players.length>=8||animating;
+  $("shuffle").disabled=animating||!ref;
 }
+
+/* анимация «перемешивания»: несколько быстрых случайных раскладов, потом итоговый */
+async function playShuffle(){
+  animating=true;
+  list.classList.add("busy");$("shuffle").classList.add("rolling");
+  if(document.activeElement)document.activeElement.blur();
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(!reduce){
+    for(let k=0;k<5;k++){renderSetup(shuffled(state.players),150+k*25);await sleep(170+k*30)}
+  }
+  renderSetup(state.players,reduce?0:550,true);
+  list.querySelectorAll(".row").forEach((r,i)=>{r.classList.remove("land");void r.offsetWidth;r.style.animationDelay=(i*60)+"ms";r.classList.add("land")});
+  await sleep(reduce?0:600);
+  animating=false;
+  list.classList.remove("busy");$("shuffle").classList.remove("rolling");
+  render(true);
+}
+
 function addPlayer(){
-  update(s=>{if(s.players.length<8)s.players.push("")});
+  update(s=>{
+    if(s.players.length>=8)return;
+    const used=new Set(s.players.map(p=>p.c));let c=0;while(used.has(c))c++;
+    s.players.push({n:"",c});
+  });
 }
 $("add").onclick=addPlayer;
+$("shuffle").onclick=()=>update(s=>{
+  if(s.players.length<2)return;
+  const old=s.players.map(p=>p.c).join(",");let next;
+  do{next=shuffled(s.players)}while(next.map(p=>p.c).join(",")===old);
+  s.players=next;s.shuf=(s.shuf||0)+1;
+});
 
 /* ---- экран игры ---- */
 function renderGame(){
-  const n=names(), t=((state.turn%n.length)+n.length)%n.length;
-  game.style.setProperty("--cur",color(t));
-  nameEl.textContent=n[t];
+  const P=state.players, t=((state.turn%P.length)+P.length)%P.length;
+  game.style.setProperty("--cur",color(P[t].c));
+  nameEl.textContent=label(P[t],t);
   const key=state.round+":"+t;
   if(key!==lastTurnKey){nameEl.classList.remove("pop");void nameEl.offsetWidth;nameEl.classList.add("pop");lastTurnKey=key}
   $("round").textContent=`Круг ${state.round}`;
-  $("queue").innerHTML=n.map((x,i)=>`<span class="q${i===t?" cur":""}"><span class="dot" style="--c:${color(i)}"></span>${esc(x)}</span>`).join("");
+  $("queue").innerHTML=P.map((p,i)=>`<span class="q${i===t?" cur":""}"><span class="dot" style="--c:${color(p.c)}"></span>${esc(label(p,i))}</span>`).join("");
   $("back").disabled=(state.round===1&&t===0);
 }
 
-function render(){
+function render(markFirst=false){
   if(state.started){$("setup").style.display="none";game.classList.add("on");renderGame()}
-  else{game.classList.remove("on");$("setup").style.display="";renderSetup()}
+  else{game.classList.remove("on");$("setup").style.display="";renderSetup(state.players,0,markFirst)}
 }
 
 $("start").onclick=()=>update(s=>{s.turn=0;s.round=1;s.started=true});
@@ -192,23 +253,23 @@ document.addEventListener("keydown",e=>{
 
 /* ---- подключение ---- */
 renderSetup();
-if(firebaseConfig.databaseURL.includes("ВСТАВЬ")){
-  setStatus("err","Не вставлен конфиг Firebase — синхронизации нет");
-  $("start").disabled=true;
-}else{
-  try{
-    firebase.initializeApp(firebaseConfig);
-    ref=firebase.database().ref("rooms/"+room);
-    firebase.database().ref(".info/connected").on("value",s=>{
-      s.val()?setStatus("ok",`Онлайн · комната «${room}»`):setStatus("","Нет связи, переподключаюсь…");
-    });
-    ref.on("value",snap=>{
-      const v=snap.val();
-      if(!v){ref.set(toDb(state));return}
-      state=fromDb(v);render();
-    },err=>setStatus("err","База не пускает: проверь правила (Rules) в Firebase"));
-  }catch(e){setStatus("err","Ошибка в конфиге Firebase")}
-}
+try{
+  firebase.initializeApp(firebaseConfig);
+  ref=firebase.database().ref("rooms/"+room);
+  firebase.database().ref(".info/connected").on("value",s=>{
+    s.val()?setStatus("ok",`Онлайн · комната «${room}»`):setStatus("","Нет связи, переподключаюсь…");
+  });
+  ref.on("value",snap=>{
+    const v=snap.val();
+    if(!v){ref.set(toDb(state));return}
+    const prevShuf=state.shuf;
+    state=fromDb(v);
+    if(animating)return;                       // итог отрисуется в конце анимации
+    if(loaded&&!state.started&&state.shuf!==prevShuf)playShuffle();
+    else render();
+    loaded=true;
+  },()=>setStatus("err","База не пускает: проверь правила (Rules) в Firebase"));
+}catch(e){setStatus("err","Ошибка в конфиге Firebase")}
 </script>
 </body>
 </html>
